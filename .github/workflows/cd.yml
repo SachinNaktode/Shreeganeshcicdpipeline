@@ -1,0 +1,129 @@
+
+name: Terraform CD - DEV
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: true
+
+jobs:
+
+  # ============================================================
+  # Terraform Dev Plan
+  # ============================================================
+  dev-plan:
+
+    name: Terraform Dev Plan
+    runs-on: ubuntu-latest
+
+    env:
+      TF_WORKING_DIR: env/dev
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Create Dev terraform.tfvars
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TFVARS_CONTENT: ${{ secrets.DEV_TFVARS_CONTENT }}
+        run: |
+          printf '%s' "$TFVARS_CONTENT" > terraform.tfvars
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform validate
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform plan \
+            -input=false \
+            -out=tfplan
+
+      - name: Upload Dev Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-tfplan
+          path: env/dev/tfplan
+
+
+  # ============================================================
+  # Terraform Dev Apply
+  # ============================================================
+  dev-apply:
+
+    name: Terraform Dev Apply
+    runs-on: ubuntu-latest
+
+    needs:
+      - dev-plan
+
+    environment:
+      name: dev
+
+    env:
+      TF_WORKING_DIR: env/dev
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Create Dev terraform.tfvars
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TFVARS_CONTENT: ${{ secrets.DEV_TFVARS_CONTENT }}
+        run: |
+          printf '%s' "$TFVARS_CONTENT" > terraform.tfvars
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform init -input=false
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve
